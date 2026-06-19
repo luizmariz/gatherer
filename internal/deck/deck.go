@@ -17,11 +17,14 @@ type Decklist struct {
 	Spells     []Spell     `json:"spells"`
 }
 
-// Permanent is a service expected to be on the battlefield. Type is flavor
-// only (land, artifact, creature, ...) and does not affect reconciliation.
+// Permanent is a prerequisite ("tech") the turn needs in play before it casts
+// spells. Cost tests whether the requirement is already met (exit 0 = in play).
+// If it is not, Rules sets the permanent up; a permanent whose Cost is unmet and
+// that has no Rules counters the turn.
 type Permanent struct {
-	Name string `json:"name"`
-	Type string `json:"type,omitempty"`
+	Name  string   `json:"name"`
+	Cost  []string `json:"cost"`
+	Rules []string `json:"rules,omitempty"`
 }
 
 // Spell is a single reconcile step: a command (Cast) bound to a turn phase.
@@ -64,6 +67,15 @@ func (d *Decklist) Validate() error {
 
 	if len(d.Spells) == 0 {
 		return errors.New("decklist has no spells to cast")
+	}
+
+	for i, p := range d.Permanents {
+		switch {
+		case p.Name == "":
+			return fmt.Errorf("permanent %d: name must be set", i)
+		case len(p.Cost) == 0:
+			return fmt.Errorf("permanent %q: cost must list a command to run", p.Name)
+		}
 	}
 
 	for i, s := range d.Spells {

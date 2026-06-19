@@ -32,8 +32,6 @@ func main() {
 		err = runTurn(args, false)
 	case "scry":
 		err = runTurn(args, true)
-	case "battlefield":
-		err = runBattlefield(args)
 	case "oracle":
 		err = runOracle(args)
 	case "version", "--version", "-v":
@@ -80,35 +78,6 @@ func runTurn(args []string, scry bool) error {
 	caster := &spell.Runner{Dir: *dir}
 
 	return plan.Resolve(ctx, caster, turn.Options{Scry: scry, Out: os.Stdout})
-}
-
-// runBattlefield lists the permanents (services) declared for the plane.
-func runBattlefield(args []string) error {
-	fs := flag.NewFlagSet("battlefield", flag.ExitOnError)
-	deckPath := fs.String("deck", "decklist.json", "path to the decklist")
-	fs.Parse(args)
-
-	d, err := deck.Load(*deckPath)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Battlefield for plane %q:\n", d.Plane)
-
-	if len(d.Permanents) == 0 {
-		fmt.Println("  (no permanents declared)")
-		return nil
-	}
-
-	for _, p := range d.Permanents {
-		kind := p.Type
-		if kind == "" {
-			kind = "permanent"
-		}
-		fmt.Printf("  • %-16s %s\n", p.Name, kind)
-	}
-
-	return nil
 }
 
 // runOracle prints the canonical desired state in turn order.
@@ -160,7 +129,6 @@ Usage:
 Commands:
   resolve      Resolve the stack: run the full reconcile turn
   scry         Dry-run: announce every spell without casting it
-  battlefield  Show the permanents (services) declared for the plane
   oracle       Show the canonical desired state in turn order
   version      Print the version
   help         Show this help

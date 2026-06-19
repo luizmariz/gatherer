@@ -111,6 +111,71 @@ func TestRequiredFailureAbortsTurn(t *testing.T) {
 	}
 }
 
+func TestPermanentPresentIsBypassed(t *testing.T) {
+	d := &deck.Decklist{
+		Plane:      "test",
+		Permanents: []deck.Permanent{{Name: "docker", Cost: []string{"true"}, Rules: []string{"install"}}},
+		Spells:     []deck.Spell{{Name: "go", Phase: "untap", Cast: []string{"true"}}},
+	}
+	plan, _ := Plan(d)
+	c := &fakeCaster{} // "docker (cost)" succeeds (no fail entry)
+
+	if err := plan.Resolve(context.Background(), c, Options{Out: io.Discard}); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	for _, name := range c.cast {
+		if name == "docker (rules)" {
+			t.Fatal("applied rules to a permanent that was already in play")
+		}
+	}
+}
+
+func TestPermanentUnmetCostAppliesRules(t *testing.T) {
+	d := &deck.Decklist{
+		Plane:      "test",
+		Permanents: []deck.Permanent{{Name: "docker", Cost: []string{"false"}, Rules: []string{"install"}}},
+		Spells:     []deck.Spell{{Name: "go", Phase: "untap", Cast: []string{"true"}}},
+	}
+	plan, _ := Plan(d)
+	c := &fakeCaster{fail: map[string]error{"docker (cost)": errors.New("unmet")}}
+
+	if err := plan.Resolve(context.Background(), c, Options{Out: io.Discard}); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	applied := false
+	for _, name := range c.cast {
+		if name == "docker (rules)" {
+			applied = true
+		}
+	}
+	if !applied {
+		t.Fatal("rules were not applied for an unmet permanent")
+	}
+}
+
+func TestPermanentUnmetWithoutRulesCountersTurn(t *testing.T) {
+	d := &deck.Decklist{
+		Plane:      "test",
+		Permanents: []deck.Permanent{{Name: "docker", Cost: []string{"false"}}},
+		Spells:     []deck.Spell{{Name: "go", Phase: "untap", Cast: []string{"true"}}},
+	}
+	plan, _ := Plan(d)
+	c := &fakeCaster{fail: map[string]error{"docker (cost)": errors.New("unmet")}}
+
+	err := plan.Resolve(context.Background(), c, Options{Out: io.Discard})
+	if err == nil {
+		t.Fatal("expected the turn to be countered when a required permanent's cost is unmet")
+	}
+
+	for _, name := range c.cast {
+		if name == "go" {
+			t.Fatal("turn continued past a missing required permanent")
+		}
+	}
+}
+
 func TestOptionalFailureContinues(t *testing.T) {
 	d := sampleDeck()
 	d.Spells[2].Optional = true // fetch (draw) is optional

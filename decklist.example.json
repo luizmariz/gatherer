@@ -1,11 +1,11 @@
 {
   "plane": "production",
   "permanents": [
-    { "name": "postgres", "type": "land" },
-    { "name": "garage", "type": "artifact" },
-    { "name": "registry", "type": "artifact" },
-    { "name": "main-service", "type": "creature" },
-    { "name": "nginx", "type": "wall" }
+    {
+      "name": "docker",
+      "cost": ["sh", "-c", "command -v docker >/dev/null"],
+      "rules": ["sh", "-c", "curl -fsSL https://get.docker.com | sh"]
+    }
   ],
   "spells": [
     {
