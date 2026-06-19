@@ -44,6 +44,7 @@ make build                                  # -> ./gatherer
 ./gatherer scry --deck decklist.example.json     # dry-run the turn
 ./gatherer oracle --deck decklist.example.json   # canonical desired state, in order
 ./gatherer resolve --deck decklist.json --dir /opt/platform   # do it for real
+./gatherer planeswalk deploy@vps --deck decklist.example.json # set up a remote host from scratch
 ```
 
 Commands:
@@ -53,6 +54,7 @@ Commands:
 | `resolve`     | Resolve the stack: run the full reconcile turn       |
 | `scry`        | Dry-run: announce every spell without casting it     |
 | `oracle`      | Show the canonical desired state in turn order       |
+| `planeswalk`  | Ship gatherer + a decklist to a host over SSH and resolve it there |
 | `version`     | Print the version                                    |
 
 Common flags: `--deck PATH` (default `decklist.json`), `--dir PATH` (working
@@ -96,7 +98,28 @@ internal/deck/     decklist data model + JSON loader/validator
 internal/turn/     the reconcile engine: phases + planning + resolve
 internal/spell/    the caster: executes a spell as a child process
 internal/ui/       TTY-aware rendering: colors, MTG icons, flavor, spinners
+internal/remote/   planeswalk: ship + resolve on a host over ssh/rsync/scp
 ```
+
+## Planeswalk (remote)
+
+`planeswalk` sets up a host from scratch — no runtime to install, because gatherer
+is a single static binary:
+
+```sh
+gatherer planeswalk deploy@vps --deck decklist.production.json --dir .
+```
+
+It (1) scouts the plane (`uname` to detect OS/arch), (2) stages a working dir on
+the remote, (3) `rsync`s your `--dir` (decklist + compose + scripts) there,
+(4) `scp`s the binary, then (5) runs `gatherer resolve` **on the host** over an
+interactive SSH session, so its spinners and colors render locally. On a bare box
+the `permanents` install the missing tech (e.g. docker) before the spells deploy.
+
+- Uses the system `ssh`/`rsync`/`scp` — your SSH config, keys, and Tailscale names
+  all just work. Falls back to a tar-over-ssh pipeline when `rsync` is absent.
+- The decklist must live inside `--dir`. Add `--scry` to dry-run on the remote,
+  `--binary PATH` to ship a cross-compiled build for a different remote arch.
 
 Dependency direction is one-way: `turn` consumes `deck`; `spell` consumes `deck`;
 `main` wires them together. `turn` depends only on a `Caster` interface, so the
@@ -112,8 +135,6 @@ make scry    # build + dry-run against the example decklist
 
 ## Roadmap
 
-- `planeswalk <host>`: ship the binary + decklist to a remote host over SSH and
-  resolve it there — set up an environment from scratch, remotely.
 - `--only <phase>` / `--from <phase>` to resolve a slice of the turn.
 - `--verbose` to stream raw command output live (and skip the spinner).
 - `counterspell`: abort an in-flight resolve cleanly (context cancellation is wired).

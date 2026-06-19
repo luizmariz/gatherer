@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/luizmariz/gatherer/internal/deck"
+	"github.com/luizmariz/gatherer/internal/remote"
 	"github.com/luizmariz/gatherer/internal/spell"
 	"github.com/luizmariz/gatherer/internal/turn"
 )
@@ -34,6 +36,8 @@ func main() {
 		err = runTurn(args, true)
 	case "oracle":
 		err = runOracle(args)
+	case "planeswalk":
+		err = runPlaneswalk(args)
 	case "version", "--version", "-v":
 		fmt.Printf("gatherer %s — \"Knowledge is the difference between a deck and a pile of cards.\"\n", version)
 	case "help", "--help", "-h":
@@ -120,6 +124,45 @@ func runOracle(args []string) error {
 	return nil
 }
 
+// runPlaneswalk ships the binary + working dir to a host over SSH and resolves
+// the decklist there.
+func runPlaneswalk(args []string) error {
+	if len(args) < 1 || strings.HasPrefix(args[0], "-") {
+		return fmt.Errorf("usage: gatherer planeswalk <user@host> [--deck PATH] [--dir PATH]")
+	}
+	host := args[0]
+
+	fs := flag.NewFlagSet("planeswalk", flag.ExitOnError)
+	deckPath := fs.String("deck", "decklist.json", "decklist to resolve on the remote (must live inside --dir)")
+	dir := fs.String("dir", ".", "local working directory to ship to the host")
+	remoteDir := fs.String("remote-dir", "gatherer", "staging directory on the remote host")
+	binary := fs.String("binary", "", "gatherer binary to ship (default: this executable)")
+	scry := fs.Bool("scry", false, "dry-run on the remote instead of resolving")
+	fs.Parse(args[1:])
+
+	bin := *binary
+	if bin == "" {
+		self, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("locating this binary to ship: %w", err)
+		}
+		bin = self
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	return remote.Planeswalk(ctx, remote.Options{
+		Host:       host,
+		RemoteDir:  *remoteDir,
+		LocalDir:   *dir,
+		DeckPath:   *deckPath,
+		BinaryPath: bin,
+		Scry:       *scry,
+		Out:        os.Stdout,
+	})
+}
+
 func usage() {
 	fmt.Print(`gatherer — reconcile a host by playing a Magic turn
 
@@ -130,12 +173,17 @@ Commands:
   resolve      Resolve the stack: run the full reconcile turn
   scry         Dry-run: announce every spell without casting it
   oracle       Show the canonical desired state in turn order
+  planeswalk   Ship gatherer + a decklist to a host over SSH and resolve it there
   version      Print the version
   help         Show this help
 
 Common flags:
   --deck PATH  Decklist file (default "decklist.json")
   --dir  PATH  Working directory for casts (default ".")
+
+planeswalk:
+  gatherer planeswalk <user@host> [--deck PATH] [--dir PATH] [--remote-dir PATH]
+                       [--binary PATH] [--scry]
 
 A turn runs these phases in order:
   untap → upkeep → draw → main1 → combat → main2 → end
