@@ -34,8 +34,11 @@ type Caster interface {
 
 // Options tune a resolve.
 type Options struct {
-	Scry bool      // plan only: announce spells without casting them
-	Out  io.Writer // where banners and flavor are written
+	Scry    bool      // plan only: announce spells without casting them
+	Verbose bool      // stream raw command output (no spinner)
+	From    string    // resolve from this phase key onward ("" = all)
+	Only    string    // resolve only this phase key ("" = all)
+	Out     io.Writer // where banners and flavor are written
 }
 
 // Plan groups the decklist's spells by phase and orders them as a turn.
@@ -82,6 +85,11 @@ func (t *Turn) Resolve(ctx context.Context, c Caster, opts Options) error {
 		fmt.Fprintf(out, "%s\n", th.Flavor(ui.FlavorStart()))
 	}
 
+	include, err := phaseFilter(opts)
+	if err != nil {
+		return err
+	}
+
 	if len(t.Permanents) > 0 {
 		fmt.Fprintf(out, "\n%s %s — ensure prerequisite tech is in play\n", ui.IconReady, th.Title("Ready the battlefield"))
 
@@ -93,6 +101,10 @@ func (t *Turn) Resolve(ctx context.Context, c Caster, opts Options) error {
 	}
 
 	for _, step := range t.Steps {
+		if !include(step.Phase) {
+			continue
+		}
+
 		fmt.Fprintf(out, "\n%s %s — %s\n", ui.PhaseIcon(step.Phase.Key()), th.Title(step.Phase.Title()), step.Phase.Intent())
 
 		for _, s := range step.Spells {
@@ -101,7 +113,7 @@ func (t *Turn) Resolve(ctx context.Context, c Caster, opts Options) error {
 				continue
 			}
 
-			if err := castSpell(ctx, c, out, th, s); err != nil {
+			if err := castSpell(ctx, c, out, th, s, opts.Verbose); err != nil {
 				return fmt.Errorf("%s countered in %s: %w", quote(s.Name), step.Phase.Title(), err)
 			}
 		}
@@ -116,9 +128,37 @@ func (t *Turn) Resolve(ctx context.Context, c Caster, opts Options) error {
 	return nil
 }
 
+// phaseFilter builds a predicate selecting which phases to resolve. Only takes
+// precedence over From; both are validated phase keys.
+func phaseFilter(opts Options) (func(Phase) bool, error) {
+	switch {
+	case opts.Only != "":
+		only, err := ParsePhase(opts.Only)
+		if err != nil {
+			return nil, err
+		}
+		return func(p Phase) bool { return p == only }, nil
+	case opts.From != "":
+		from, err := ParsePhase(opts.From)
+		if err != nil {
+			return nil, err
+		}
+		return func(p Phase) bool { return p >= from }, nil
+	default:
+		return func(Phase) bool { return true }, nil
+	}
+}
+
+func spinnerFor(th ui.Theme, out io.Writer, msg string, verbose bool) *ui.Spinner {
+	if verbose {
+		return th.PlainSpinner(out, msg)
+	}
+	return th.Spinner(out, msg)
+}
+
 // castSpell runs one spell behind a spinner and prints a themed status line.
-func castSpell(ctx context.Context, c Caster, out io.Writer, th ui.Theme, s deck.Spell) error {
-	sp := th.Spinner(out, "casting "+quote(s.Name)+": "+th.Cmd(command(s)))
+func castSpell(ctx context.Context, c Caster, out io.Writer, th ui.Theme, s deck.Spell, verbose bool) error {
+	sp := spinnerFor(th, out, "casting "+quote(s.Name)+": "+th.Cmd(command(s)), verbose)
 	start := time.Now()
 	sp.Start()
 
@@ -152,7 +192,7 @@ func ready(ctx context.Context, c Caster, p deck.Permanent, opts Options, out io
 		return nil
 	}
 
-	sp := th.Spinner(out, "paying cost for "+quote(p.Name)+": "+th.Cmd(strings.Join(p.Cost, " ")))
+	sp := spinnerFor(th, out, "paying cost for "+quote(p.Name)+": "+th.Cmd(strings.Join(p.Cost, " ")), opts.Verbose)
 	start := time.Now()
 	sp.Start()
 	costErr := c.Cast(ctx, deck.Spell{Name: p.Name + " (cost)", Cast: p.Cost})
@@ -170,7 +210,7 @@ func ready(ctx context.Context, c Caster, p deck.Permanent, opts Options, out io
 
 	sp.Stop(th.Warn(ui.IconFizzle+" "+quote(p.Name)+" unmet — applying rules") + el)
 
-	rsp := th.Spinner(out, "resolving "+quote(p.Name)+": "+th.Cmd(strings.Join(p.Rules, " ")))
+	rsp := spinnerFor(th, out, "resolving "+quote(p.Name)+": "+th.Cmd(strings.Join(p.Rules, " ")), opts.Verbose)
 	rstart := time.Now()
 	rsp.Start()
 	rulesErr := c.Cast(ctx, deck.Spell{Name: p.Name + " (rules)", Cast: p.Rules})

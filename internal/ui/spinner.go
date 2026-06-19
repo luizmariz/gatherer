@@ -11,22 +11,29 @@ var spinFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"
 // Spinner shows an animated line while a command runs. On a non-TTY it prints a
 // single static line at Start and the final line at Stop (no animation).
 type Spinner struct {
-	w     io.Writer
-	theme Theme
-	msg   string
+	w       io.Writer
+	theme   Theme
+	msg     string
+	animate bool
 
 	stop chan struct{}
 	done chan struct{}
 }
 
-// Spinner builds a spinner that writes to w with this theme.
+// Spinner builds a spinner that animates on a TTY and prints static lines off it.
 func (t Theme) Spinner(w io.Writer, msg string) *Spinner {
-	return &Spinner{w: w, theme: t, msg: msg}
+	return &Spinner{w: w, theme: t, msg: msg, animate: t.TTY}
 }
 
-// Start begins the animation (TTY) or prints the message once (non-TTY).
+// PlainSpinner never animates (used in verbose mode, where command output
+// streams between the start and finish lines).
+func (t Theme) PlainSpinner(w io.Writer, msg string) *Spinner {
+	return &Spinner{w: w, theme: t, msg: msg, animate: false}
+}
+
+// Start begins the animation, or prints the message once when not animating.
 func (s *Spinner) Start() {
-	if !s.theme.TTY {
+	if !s.animate {
 		fmt.Fprintf(s.w, "  %s %s\n", IconCast, s.msg)
 		return
 	}
@@ -53,7 +60,7 @@ func (s *Spinner) Start() {
 
 // Stop ends the animation and prints the final status line in its place.
 func (s *Spinner) Stop(final string) {
-	if !s.theme.TTY {
+	if !s.animate {
 		fmt.Fprintf(s.w, "  %s\n", final)
 		return
 	}

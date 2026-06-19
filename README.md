@@ -57,8 +57,13 @@ Commands:
 | `planeswalk`  | Ship gatherer + a decklist to a host over SSH and resolve it there |
 | `version`     | Print the version                                    |
 
-Common flags: `--deck PATH` (default `decklist.json`), `--dir PATH` (working
-directory for casts, default `.`).
+Common flags:
+
+- `--deck PATH` — decklist file (default `decklist.json`)
+- `--dir PATH` — working directory for casts (default `.`)
+- `--verbose` — stream raw command output live (disables the spinner)
+- `--from PHASE` / `--only PHASE` — resolve a slice of the turn (e.g. re-run from
+  `combat`, or just the `end` health checks). The `permanents` preflight always runs.
 
 ## Decklist format
 
@@ -135,6 +140,5 @@ make scry    # build + dry-run against the example decklist
 
 ## Roadmap
 
-- `--only <phase>` / `--from <phase>` to resolve a slice of the turn.
-- `--verbose` to stream raw command output live (and skip the spinner).
 - `counterspell`: abort an in-flight resolve cleanly (context cancellation is wired).
+- `planeswalk --secrets`: securely seed host secrets (ties into the secret-tools store).

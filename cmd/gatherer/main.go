@@ -64,6 +64,9 @@ func runTurn(args []string, scry bool) error {
 	fs := flag.NewFlagSet(name, flag.ExitOnError)
 	deckPath := fs.String("deck", "decklist.json", "path to the decklist (desired state)")
 	dir := fs.String("dir", ".", "working directory for casting spells")
+	verbose := fs.Bool("verbose", false, "stream raw command output live (disables the spinner)")
+	from := fs.String("from", "", "resolve from this phase onward (untap|upkeep|draw|main1|combat|main2|end)")
+	only := fs.String("only", "", "resolve only this phase")
 	fs.Parse(args)
 
 	d, err := deck.Load(*deckPath)
@@ -79,9 +82,15 @@ func runTurn(args []string, scry bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	caster := &spell.Runner{Dir: *dir}
+	caster := &spell.Runner{Dir: *dir, Stream: *verbose}
 
-	return plan.Resolve(ctx, caster, turn.Options{Scry: scry, Out: os.Stdout})
+	return plan.Resolve(ctx, caster, turn.Options{
+		Scry:    scry,
+		Verbose: *verbose,
+		From:    *from,
+		Only:    *only,
+		Out:     os.Stdout,
+	})
 }
 
 // runOracle prints the canonical desired state in turn order.

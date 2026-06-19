@@ -111,6 +111,46 @@ func TestRequiredFailureAbortsTurn(t *testing.T) {
 	}
 }
 
+func TestResolveOnlyPhase(t *testing.T) {
+	plan, _ := Plan(sampleDeck()) // untap:ready, draw:fetch, combat:go-live
+	c := &fakeCaster{}
+
+	if err := plan.Resolve(context.Background(), c, Options{Only: "draw", Out: io.Discard}); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	if len(c.cast) != 1 || c.cast[0] != "fetch" {
+		t.Fatalf("--only draw cast %v, want [fetch]", c.cast)
+	}
+}
+
+func TestResolveFromPhase(t *testing.T) {
+	plan, _ := Plan(sampleDeck())
+	c := &fakeCaster{}
+
+	if err := plan.Resolve(context.Background(), c, Options{From: "draw", Out: io.Discard}); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	want := []string{"fetch", "go-live"} // draw onward, skipping untap's "ready"
+	if len(c.cast) != len(want) {
+		t.Fatalf("--from draw cast %v, want %v", c.cast, want)
+	}
+	for i := range want {
+		if c.cast[i] != want[i] {
+			t.Errorf("cast[%d]=%s, want %s", i, c.cast[i], want[i])
+		}
+	}
+}
+
+func TestResolveRejectsBadPhaseFilter(t *testing.T) {
+	plan, _ := Plan(sampleDeck())
+
+	if err := plan.Resolve(context.Background(), &fakeCaster{}, Options{Only: "morph", Out: io.Discard}); err == nil {
+		t.Fatal("expected error for unknown phase in --only")
+	}
+}
+
 func TestPermanentPresentIsBypassed(t *testing.T) {
 	d := &deck.Decklist{
 		Plane:      "test",
