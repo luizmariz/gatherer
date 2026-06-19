@@ -1,0 +1,48 @@
+{
+  "plane": "production",
+  "permanents": [
+    { "name": "postgres", "type": "land" },
+    { "name": "garage", "type": "artifact" },
+    { "name": "registry", "type": "artifact" },
+    { "name": "main-service", "type": "creature" },
+    { "name": "nginx", "type": "wall" }
+  ],
+  "spells": [
+    {
+      "name": "ready-docker",
+      "phase": "untap",
+      "cast": ["docker", "info"]
+    },
+    {
+      "name": "verify-secrets",
+      "phase": "upkeep",
+      "cast": ["sh", "scripts/sync-swarm-secrets.sh", "./secrets"]
+    },
+    {
+      "name": "pull-images",
+      "phase": "draw",
+      "cast": ["docker", "compose", "-f", "docker-compose.yml", "pull"]
+    },
+    {
+      "name": "deploy-platform",
+      "phase": "main1",
+      "cast": ["docker", "stack", "deploy", "-c", "docker-compose.platform.yml", "platform"]
+    },
+    {
+      "name": "deploy-app",
+      "phase": "combat",
+      "cast": ["docker", "stack", "deploy", "-c", "docker-compose.yml", "servipago"]
+    },
+    {
+      "name": "bootstrap-garage",
+      "phase": "main2",
+      "optional": true,
+      "cast": ["sh", "garage/bootstrap.sh"]
+    },
+    {
+      "name": "health-check",
+      "phase": "end",
+      "cast": ["sh", "scripts/wait-for-http.sh", "https://localhost/health"]
+    }
+  ]
+}
